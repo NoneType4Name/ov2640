@@ -20,6 +20,7 @@
 #include "main.h"
 #include "fatfs.h"
 #include "mbedtls.h"
+#include "stm32h7xx_hal_pcd.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -31,6 +32,7 @@
 #include "ov2640_basic.h"
 #include "stm32h7xx_hal_gpio.h"
 #include "usbd_cdc_if.h"
+#include "usbd_def.h"
 #include <array>
 #include <bitset>
 #include <cstdint>
@@ -113,12 +115,18 @@ struct states_T
     uint16_t nightMode : 1 { 0 };
     uint16_t cameraDebugPattern : 1 { 0 };
     uint16_t busIsNearby : 1 { 0 };
+    uint16_t usbConnected : 1 { 0 };
 } states;
 FATFS FatFs;
 
 void setNewRxDataFlag()
 {
     states.newDataRx = 1;
+}
+
+int isUsbConnected()
+{
+    return states.usbConnected;
 }
 
 enum RxCommand : uint16_t // for 3 bits Rx command
@@ -353,6 +361,22 @@ void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin )
     }
 }
 
+// void HAL_PCD_ConnectCallback( PCD_HandleTypeDef *hpcd )
+// {
+//     if ( hpcd == hUsbDeviceFS.pData )
+//     {
+//         states.usbConnected = 1;
+//     }
+// }
+
+// void HAL_PCD_DisconnectCallback( PCD_HandleTypeDef *hpcd )
+// {
+//     if ( hpcd == hUsbDeviceFS.pData )
+//     {
+//         states.usbConnected = 0;
+//     }
+// }
+
 void vprint( const char *fmt, va_list argp )
 {
     char string[ 200 ];
@@ -439,7 +463,11 @@ void CDC_TX_FRAME()
     if ( states.autoExp )
         TxData.aec = aecControl.aecValue;
     TxData.time = RTC_timestamp();
-    CDC_Transmit_FS( reinterpret_cast<uint8_t *>( &TxData ), 1u << 12u );
+    if ( CDC_Transmit_FS( reinterpret_cast<uint8_t *>( &TxData ), 1u << 12u ) == USBD_BUSY )
+    {
+        __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+        __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+    }
 }
 
 HSL_t rgbToHSL( pixel_T p )
@@ -907,7 +935,7 @@ void SaveImageBMP( const char *filename, const uint8_t *buffer, UINT len )
         return;
     }
 
-    // Запись File Header
+    // File Header
     result = f_write( &FatFsFile, &BMPFileHeader, sizeof( BMPFileHeader ),
                       &bytes_written );
     if ( result != FR_OK || bytes_written != sizeof( BMPFileHeader ) )
@@ -916,7 +944,7 @@ void SaveImageBMP( const char *filename, const uint8_t *buffer, UINT len )
         return;
     }
 
-    // Запись Info Header
+    // Info Header
     result = f_write( &FatFsFile, &BMPInfoHeader, sizeof( BMPInfoHeader ),
                       &bytes_written );
     if ( result != FR_OK || bytes_written != sizeof( BMPInfoHeader ) )

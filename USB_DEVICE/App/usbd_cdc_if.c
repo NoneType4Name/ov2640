@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include "usbd_def.h"
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -314,12 +315,24 @@ static int8_t CDC_TransmitCplt_FS( uint8_t *Buf, uint32_t *Len, uint8_t epnum )
     if ( dataLen >= ( 1u << 12u ) )
     {
         curentFrameBuffer += 1u << 12u;
-        CDC_Transmit_FS( curentFrameBuffer, 1u << 12u );
+        if ( CDC_Transmit_FS( curentFrameBuffer, 1u << 12u ) == USBD_BUSY )
+        {
+            {
+                __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+                __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+            }
+        }
         dataLen -= 1u << 12u;
     }
     else if ( dataLen )
     {
-        CDC_Transmit_FS( curentFrameBuffer, dataLen );
+        if ( CDC_Transmit_FS( curentFrameBuffer, dataLen ) )
+        {
+            {
+                __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+                __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+            }
+        }
         dataLen = 0;
     }
     else if ( curentFrameBuffer )

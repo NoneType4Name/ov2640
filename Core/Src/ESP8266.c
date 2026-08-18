@@ -115,16 +115,16 @@ bool ESP8266_Send( const char *command )
 
 bool ESP8266_Recv( const char *correctAnswer )
 {
-    uint8_t prevRecvByte         = 0;
-    uint32_t timeout             = 5000;
-    uint32_t time                = HAL_GetTick();
-    ESP8266_huart->Instance->ICR = USART_ICR_ORECF |
-                                   USART_ICR_NECF |
-                                   USART_ICR_FECF |
-                                   USART_ICR_PECF |
-                                   USART_ICR_RTOCF |
-                                   USART_ICR_UDRCF;
-    ESP8266_huart->Instance->RDR;
+    uint8_t prevRecvByte = 0;
+    uint32_t timeout     = 5000;
+    uint32_t time        = HAL_GetTick();
+    // ESP8266_huart->Instance->ICR = USART_ICR_ORECF |
+    //                                USART_ICR_NECF |
+    //                                USART_ICR_FECF |
+    //                                USART_ICR_PECF |
+    //                                USART_ICR_RTOCF |
+    //                                USART_ICR_UDRCF;
+    // ESP8266_huart->Instance->RDR;
     ESP8266_ClearRecvBuff();
     HAL_UART_Receive_IT( ESP8266_huart, ( uint8_t * ) &recvByte, ( uint16_t ) 1 );
 

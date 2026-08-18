@@ -1,6 +1,4 @@
 #include "ov2640_interface.h"
-#include "main.h"
-#include "usbd_cdc_if.h"
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -17,7 +15,7 @@ static void debug_vprint( const char *fmt, va_list argp )
     char string[ 256 ];
     if ( vsnprintf( string, sizeof( string ), fmt, argp ) > 0 )
     {
-        CDC_Transmit_FS( ( uint8_t * ) string, strlen( string ) );
+        // CDC_Transmit_FS( ( uint8_t * ) string, strlen( string ) );
     }
 }
 

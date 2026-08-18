@@ -114,6 +114,7 @@ extern "C"
     /* USER CODE BEGIN EXPORTED_FUNCTIONS */
 
     void setNewRxDataFlag();
+    int isUsbConnected();
 
     /* USER CODE END EXPORTED_FUNCTIONS */
 
