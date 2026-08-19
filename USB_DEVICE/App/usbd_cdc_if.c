@@ -312,36 +312,41 @@ static int8_t CDC_TransmitCplt_FS( uint8_t *Buf, uint32_t *Len, uint8_t epnum )
 {
     uint8_t result = USBD_OK;
     /* USER CODE BEGIN 13 */
-    if ( dataLen >= ( 1u << 12u ) )
+    if ( hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED )
     {
-        curentFrameBuffer += 1u << 12u;
-        if ( CDC_Transmit_FS( curentFrameBuffer, 1u << 12u ) == USBD_BUSY )
+        if ( dataLen >= ( 1u << 12u ) )
         {
+            curentFrameBuffer += 1u << 12u;
+            if ( CDC_Transmit_FS( curentFrameBuffer, 1u << 12u ) == USBD_BUSY )
             {
-                __HAL_RCC_USB_OTG_FS_FORCE_RESET();
-                __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+                {
+                    __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+                    __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+                }
             }
+            dataLen -= 1u << 12u;
         }
-        dataLen -= 1u << 12u;
-    }
-    else if ( dataLen )
-    {
-        if ( CDC_Transmit_FS( curentFrameBuffer, dataLen ) )
+        else if ( dataLen )
         {
+            if ( CDC_Transmit_FS( curentFrameBuffer, dataLen ) )
             {
-                __HAL_RCC_USB_OTG_FS_FORCE_RESET();
-                __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+                {
+                    __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+                    __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+                }
             }
+            dataLen = 0;
         }
-        dataLen = 0;
+        else if ( curentFrameBuffer )
+        {
+            curentFrameBuffer = 0;
+        }
     }
-    else if ( curentFrameBuffer )
+    else
     {
+        dataLen           = 0;
         curentFrameBuffer = 0;
     }
-    UNUSED( Buf );
-    UNUSED( Len );
-    UNUSED( epnum );
     /* USER CODE END 13 */
     return result;
 }

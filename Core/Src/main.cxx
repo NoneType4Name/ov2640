@@ -115,18 +115,12 @@ struct states_T
     uint16_t nightMode : 1 { 0 };
     uint16_t cameraDebugPattern : 1 { 0 };
     uint16_t busIsNearby : 1 { 0 };
-    uint16_t usbConnected : 1 { 0 };
 } states;
 FATFS FatFs;
 
 void setNewRxDataFlag()
 {
     states.newDataRx = 1;
-}
-
-int isUsbConnected()
-{
-    return states.usbConnected;
 }
 
 enum RxCommand : uint16_t // for 3 bits Rx command
@@ -361,22 +355,6 @@ void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin )
     }
 }
 
-// void HAL_PCD_ConnectCallback( PCD_HandleTypeDef *hpcd )
-// {
-//     if ( hpcd == hUsbDeviceFS.pData )
-//     {
-//         states.usbConnected = 1;
-//     }
-// }
-
-// void HAL_PCD_DisconnectCallback( PCD_HandleTypeDef *hpcd )
-// {
-//     if ( hpcd == hUsbDeviceFS.pData )
-//     {
-//         states.usbConnected = 0;
-//     }
-// }
-
 void vprint( const char *fmt, va_list argp )
 {
     char string[ 200 ];
@@ -463,10 +441,18 @@ void CDC_TX_FRAME()
     if ( states.autoExp )
         TxData.aec = aecControl.aecValue;
     TxData.time = RTC_timestamp();
-    if ( CDC_Transmit_FS( reinterpret_cast<uint8_t *>( &TxData ), 1u << 12u ) == USBD_BUSY )
+    if ( hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED )
     {
-        __HAL_RCC_USB_OTG_FS_FORCE_RESET();
-        __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+        if ( CDC_Transmit_FS( reinterpret_cast<uint8_t *>( &TxData ), dataLen > 1u << 12u ? 1u << 12u : dataLen ) == USBD_BUSY )
+        {
+            __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+            __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+        }
+    }
+    else
+    {
+        dataLen           = 0;
+        curentFrameBuffer = 0;
     }
 }
 
