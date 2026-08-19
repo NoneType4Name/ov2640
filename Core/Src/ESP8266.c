@@ -10,30 +10,82 @@ char ESP_TX_buff[ ESP_TX_buff_size ] __attribute__( ( section( ".RAM_D2" ) ) );
 volatile uint8_t recvByte;
 int ESP_RX_buff_index = 0;
 
-volatile bool ESP8266_rxPollingEnabled = false;
-volatile uint16_t ESP8266_rxHead       = 0;
-volatile uint16_t ESP8266_rxTail       = 0;
-volatile uint16_t ESP8266_rxCount      = 0;
+// volatile bool ESP8266_rxPollingEnabled = false;
+volatile uint16_t ESP8266_rxHead  = 0;
+volatile uint16_t ESP8266_rxTail  = 0;
+volatile uint16_t ESP8266_rxCount = 0;
 
 UART_HandleTypeDef *ESP8266_huart;
+DMA_HandleTypeDef *ESP8266_hdma;
 GPIO_TypeDef *ESP8266_PinPort;
 uint32_t ESP8266_PinNum;
 
-void ESP8266_SetConfig( UART_HandleTypeDef *huart, GPIO_TypeDef *pinPort, uint32_t pinNum )
+void ESP8266_SetConfig( UART_HandleTypeDef *huart, DMA_HandleTypeDef *hdma, GPIO_TypeDef *pinPort, uint32_t pinNum )
 {
     ESP8266_PinPort = pinPort;
     ESP8266_PinNum  = pinNum;
     ESP8266_huart   = huart;
+    ESP8266_hdma    = hdma;
+}
+
+char *ESP8266_strstr( const char *needle )
+{
+    uint16_t needle_len = strlen( needle );
+    if ( needle_len == 0 || ESP8266_rxCount < needle_len ) return NULL;
+
+    for ( uint16_t i = 0; i <= ESP8266_rxCount - needle_len; i++ )
+    {
+        uint16_t pos = ( ESP8266_rxTail + i ) % ESP_RX_buff_size;
+        bool match   = true;
+
+        for ( uint16_t j = 0; j < needle_len; j++ )
+        {
+            uint16_t idx = ( pos + j ) % ESP_RX_buff_size;
+            if ( ESP_RX_buff[ idx ] != needle[ j ] )
+            {
+                match = false;
+                break;
+            }
+        }
+
+        if ( match )
+        {
+            return &ESP_RX_buff[ pos ];
+        }
+    }
+
+    return NULL;
+}
+
+uint16_t ESP8266_get_offset( const char *found_ptr )
+{
+    if ( found_ptr < ESP_RX_buff || found_ptr >= ESP_RX_buff + ESP_RX_buff_size )
+    {
+        return 0xFFFF;
+    }
+
+    uint16_t found_pos = found_ptr - ESP_RX_buff;
+
+    if ( found_pos >= ESP8266_rxTail )
+    {
+        return found_pos - ESP8266_rxTail;
+    }
+    else
+    {
+        return ( ESP_RX_buff_size - ESP8266_rxTail ) + found_pos;
+    }
 }
 
 void ESP8266_ON()
 {
     HAL_GPIO_WritePin( ESP8266_PinPort, ESP8266_PinNum, GPIO_PIN_SET );
+    HAL_UARTEx_ReceiveToIdle_DMA( ESP8266_huart, ( uint8_t * ) ESP_RX_buff, ESP_RX_buff_size );
 }
 
 void ESP8266_OFF()
 {
     HAL_GPIO_WritePin( ESP8266_PinPort, ESP8266_PinNum, GPIO_PIN_RESET );
+    HAL_UART_DMAStop( ESP8266_huart );
 }
 
 bool ESP8266_Restart()
@@ -84,7 +136,7 @@ bool ESP8266_DisconnectFromWifi()
 
 bool ESP8266_SendRequest( const char *type, const char *ip, uint16_t port, const char *request )
 {
-    ESP8266_ClearRecvBuff();
+    // ESP8266_ClearRecvBuff();
     return ESP8266_AT_CIPSTART( type, ip, port ) && ESP8266_AT_CIPSEND( strlen( request ) + 2 ) && ESP8266_AT_SendData( request );
 }
 
@@ -108,40 +160,23 @@ bool ESP8266_AT_SendData( const char *request )
 
 bool ESP8266_Send( const char *command )
 {
-    // return HAL_UART_Transmit_DMA(ESP8266_huart, (uint8_t*)command, strlen(command));
-    // HAL_UART_Receive_IT( ESP8266_huart, ( uint8_t * ) &recvByte, ( uint16_t ) 1 );
+    // return HAL_UART_Transmit_DMA( ESP8266_huart, ( uint8_t * ) command, strlen( command ) );
     return HAL_UART_Transmit( ESP8266_huart, ( uint8_t * ) command, strlen( command ), 100 ) == HAL_OK;
 }
 
 bool ESP8266_Recv( const char *correctAnswer )
 {
-    uint8_t prevRecvByte = 0;
-    uint32_t timeout     = 5000;
-    uint32_t time        = HAL_GetTick();
-    // ESP8266_huart->Instance->ICR = USART_ICR_ORECF |
-    //                                USART_ICR_NECF |
-    //                                USART_ICR_FECF |
-    //                                USART_ICR_PECF |
-    //                                USART_ICR_RTOCF |
-    //                                USART_ICR_UDRCF;
-    // ESP8266_huart->Instance->RDR;
-    ESP8266_ClearRecvBuff();
-    HAL_UART_Receive_IT( ESP8266_huart, ( uint8_t * ) &recvByte, ( uint16_t ) 1 );
-
-    if ( ESP8266_rxPollingEnabled )
-        return false;
+    uint32_t timeout = 5000;
+    uint32_t time    = HAL_GetTick();
 
     while ( HAL_GetTick() - time < timeout )
     {
-        if ( prevRecvByte != recvByte )
+        ESP8266_rxCount = ESP8266_rxTail < ESP8266_rxHead ? ESP8266_rxHead - ESP8266_rxTail : ESP_RX_buff_size - ESP8266_rxTail + ESP8266_rxHead;
+        ESP8266_rxHead  = ESP_RX_buff_size - __HAL_DMA_GET_COUNTER( ESP8266_hdma );
+        char *index;
+        if ( ( index = ESP8266_strstr( correctAnswer ) ) != NULL )
         {
-            time         = HAL_GetTick();
-            prevRecvByte = recvByte;
-        }
-
-        if ( strstr( ESP_RX_buff, correctAnswer ) != NULL )
-        {
-            HAL_UART_AbortReceive( ESP8266_huart );
+            ESP8266_rxHead = ESP_RX_buff - index;
             return true;
         }
     }
@@ -154,24 +189,22 @@ size_t ESP8266_RecvCount( uint8_t *dst, uint32_t count )
     if ( dst == NULL || count == 0 )
         return 0;
 
-    if ( !ESP8266_rxPollingEnabled )
-        return 0;
+    // if ( !ESP8266_rxPollingEnabled )
+    //     return 0;
     uint32_t timeout = 10000;
     uint32_t time    = HAL_GetTick();
-    do
+    // do
+    // {
+    while ( HAL_GetTick() - time < timeout )
     {
-        while ( HAL_GetTick() - time < timeout )
+        ESP8266_rxCount = ESP8266_rxTail < ESP8266_rxHead ? ESP8266_rxHead - ESP8266_rxTail : ESP_RX_buff_size - ESP8266_rxTail + ESP8266_rxHead;
+        ESP8266_rxHead  = ESP_RX_buff_size - __HAL_DMA_GET_COUNTER( ESP8266_hdma );
+        if ( ESP8266_rxCount >= count )
         {
-            if ( ESP8266_rxCount >= count )
-            {
-                break;
-            }
+            break;
         }
-        if ( !ESP8266_rxCount )
-        {
-            ESP8266_StartPollingReceive();
-        }
-    } while ( !ESP8266_rxCount );
+    }
+    // } while ( !ESP8266_rxCount );
 
     uint32_t len   = ESP8266_rxCount < count ? ESP8266_rxCount : count;
     uint32_t index = ESP8266_rxTail;
@@ -187,29 +220,29 @@ size_t ESP8266_RecvCount( uint8_t *dst, uint32_t count )
     return len;
 }
 
-static uint32_t ESP8266_GetDmaRegion( uint8_t **dst )
-{
-    if ( dst == NULL || !ESP8266_rxPollingEnabled || ESP8266_rxCount >= ESP_RX_buff_size )
-        return 0;
+// static uint32_t ESP8266_GetDmaRegion( uint8_t **dst )
+// {
+//     if ( dst == NULL || !ESP8266_rxPollingEnabled || ESP8266_rxCount >= ESP_RX_buff_size )
+//         return 0;
 
-    *dst = ( uint8_t * ) ESP_RX_buff + ESP8266_rxHead;
+//     *dst = ( uint8_t * ) ESP_RX_buff + ESP8266_rxHead;
 
-    if ( ESP8266_rxHead >= ESP8266_rxTail )
-    {
-        return ESP_RX_buff_size - ESP8266_rxHead;
-    }
+//     if ( ESP8266_rxHead >= ESP8266_rxTail )
+//     {
+//         return ESP_RX_buff_size - ESP8266_rxHead;
+//     }
 
-    return ESP8266_rxTail - ESP8266_rxHead;
-}
+//     return ESP8266_rxTail - ESP8266_rxHead;
+// }
 
-void ESP8266_ClearRecvBuff()
-{
-    memset( ESP_RX_buff, 0, ESP_RX_buff_size );
-    ESP_RX_buff_index = 0;
-    ESP8266_rxHead    = 0;
-    ESP8266_rxTail    = 0;
-    ESP8266_rxCount   = 0;
-}
+// void ESP8266_ClearRecvBuff()
+// {
+//     memset( ESP_RX_buff, 0, ESP_RX_buff_size );
+//     ESP_RX_buff_index = 0;
+//     ESP8266_rxHead    = 0;
+//     ESP8266_rxTail    = 0;
+//     ESP8266_rxCount   = 0;
+// }
 
 void HAL_UART_RxCpltCallback( UART_HandleTypeDef *huart )
 {
@@ -223,70 +256,65 @@ void HAL_UART_RxCpltCallback( UART_HandleTypeDef *huart )
     }
 }
 
-void HAL_UARTEx_RxEventCallback( UART_HandleTypeDef *huart, uint16_t Size )
-{
-    if ( huart != ESP8266_huart || !ESP8266_rxPollingEnabled )
-        return;
+// void HAL_UARTEx_RxEventCallback( UART_HandleTypeDef *huart, uint16_t Size )
+// {
+//     if ( huart != ESP8266_huart || !ESP8266_rxPollingEnabled )
+//         return;
 
-    if ( Size > 0 )
-    {
-        uint32_t newHead = ESP8266_rxHead + Size;
-        if ( newHead >= ESP_RX_buff_size )
-            newHead -= ESP_RX_buff_size;
+//     if ( Size > 0 )
+//     {
+//         uint32_t newHead = ESP8266_rxHead + Size;
+//         if ( newHead >= ESP_RX_buff_size )
+//             newHead -= ESP_RX_buff_size;
 
-        uint32_t newCount = ESP8266_rxCount + Size;
-        if ( newCount > ESP_RX_buff_size )
-        {
-            uint32_t overflow = newCount - ESP_RX_buff_size;
-            ESP8266_rxTail    = ( ESP8266_rxTail + overflow ) % ESP_RX_buff_size;
-            ESP8266_rxCount   = ESP_RX_buff_size;
-        }
-        else
-        {
-            ESP8266_rxCount = ( uint16_t ) newCount;
-        }
+//         uint32_t newCount = ESP8266_rxCount + Size;
+//         if ( newCount > ESP_RX_buff_size )
+//         {
+//             uint32_t overflow = newCount - ESP_RX_buff_size;
+//             ESP8266_rxTail    = ( ESP8266_rxTail + overflow ) % ESP_RX_buff_size;
+//             ESP8266_rxCount   = ESP_RX_buff_size;
+//         }
+//         else
+//         {
+//             ESP8266_rxCount = ( uint16_t ) newCount;
+//         }
 
-        ESP8266_rxHead = ( uint16_t ) newHead;
-    }
+//         ESP8266_rxHead = ( uint16_t ) newHead;
+//     }
 
-    uint8_t *target;
-    uint32_t len = ESP8266_GetDmaRegion( &target );
-    if ( len > 0 )
-    {
-        HAL_UARTEx_ReceiveToIdle_DMA( ESP8266_huart, target, ( uint16_t ) len );
-    }
-}
+//     uint8_t *target;
+//     uint32_t len = ESP8266_GetDmaRegion( &target );
+//     if ( len > 0 )
+//     {
+//         HAL_UARTEx_ReceiveToIdle_DMA( ESP8266_huart, target, ( uint16_t ) len );
+//     }
+// }
 
-void HAL_UART_ErrorCallback( UART_HandleTypeDef *huart )
-{
-    huart->ErrorCode = HAL_UART_ERROR_NONE;
-}
+// void ESP8266_StartPollingReceive( void )
+// {
+//     ESP8266_rxPollingEnabled = true;
+//     ESP8266_rxHead           = 0;
+//     ESP8266_rxTail           = 0;
+//     ESP8266_rxCount          = 0;
+//     memset( ESP_RX_buff, 0, ESP_RX_buff_size );
 
-void ESP8266_StartPollingReceive( void )
-{
-    ESP8266_rxPollingEnabled = true;
-    ESP8266_rxHead           = 0;
-    ESP8266_rxTail           = 0;
-    ESP8266_rxCount          = 0;
-    memset( ESP_RX_buff, 0, ESP_RX_buff_size );
+//     if ( ESP8266_huart != NULL )
+//     {
+//         HAL_UART_DMAStop( ESP8266_huart );
+//         HAL_UART_AbortReceive( ESP8266_huart );
+//         HAL_UARTEx_ReceiveToIdle_DMA( ESP8266_huart, ( uint8_t * ) ESP_RX_buff, ESP_RX_buff_size );
+//     }
+// }
 
-    if ( ESP8266_huart != NULL )
-    {
-        HAL_UART_DMAStop( ESP8266_huart );
-        HAL_UART_AbortReceive( ESP8266_huart );
-        HAL_UARTEx_ReceiveToIdle_DMA( ESP8266_huart, ( uint8_t * ) ESP_RX_buff, ESP_RX_buff_size );
-    }
-}
+// void ESP8266_StopPollingReceive( void )
+// {
+//     ESP8266_rxPollingEnabled = false;
 
-void ESP8266_StopPollingReceive( void )
-{
-    ESP8266_rxPollingEnabled = false;
-
-    if ( ESP8266_huart != NULL )
-    {
-        HAL_UART_DMAStop( ESP8266_huart );
-    }
-}
+//     if ( ESP8266_huart != NULL )
+//     {
+//         HAL_UART_DMAStop( ESP8266_huart );
+//     }
+// }
 
 uint32_t ESP8266_GetPollingBytesAvailable( void )
 {
@@ -326,30 +354,30 @@ char *ESP8266_GetResponse( uint32_t timeout )
     char *ipdStart  = NULL;
     char *dataStart = NULL;
     char tempBuff[ ESP_RX_buff_size ];
-    int totalLen    = 0;
-    int payloadLen  = 0;
-    int bytesNeeded = 0;
-    uint32_t time   = HAL_GetTick();
-
-    HAL_UART_Receive_IT( ESP8266_huart, ( uint8_t * ) &recvByte, ( uint16_t ) 1 );
+    uint32_t totalLen   = 0;
+    uint32_t payloadLen = 0;
+    int bytesNeeded     = 0;
+    uint32_t time       = HAL_GetTick();
 
     while ( HAL_GetTick() - time < timeout && ( bytesNeeded == 0 || ESP_RX_buff_index < bytesNeeded ) )
     {
-        ipdStart = strstr( ESP_RX_buff, "+IPD" );
+        ipdStart = ESP8266_strstr( "+IPD," ); // "+IPD,%d:"
         while ( ipdStart != NULL && ipdStart < ESP_RX_buff + ESP_RX_buff_index )
         {
-            if ( sscanf( ipdStart, "+IPD,%d:", &payloadLen ) == 1 )
+            ESP8266_rxTail = ( ESP8266_rxTail + ESP8266_get_offset( ipdStart ) + 5 ) % ESP_RX_buff_size;
+            uint8_t c;
+            while ( ( c = ESP_RX_buff[ ESP8266_rxTail ] ) != ':' ) // circular sscanf 1 digit before colon (:)
             {
-                dataStart = strchr( ipdStart, ':' );
-                if ( dataStart != NULL )
-                {
-                    dataStart++;
-                    int offset  = dataStart - ESP_RX_buff;
-                    bytesNeeded = offset + payloadLen;
-                    break;
-                }
+                payloadLen *= 10;
+                payloadLen += c;
+                ESP8266_rxTail = ( ESP8266_rxTail + 1 ) % ESP_RX_buff_size;
             }
-            ipdStart = strstr( ipdStart + 1, "+IPD" );
+
+            dataStart++ -- -;
+            int offset  = dataStart - ESP_RX_buff;
+            bytesNeeded = offset + payloadLen;
+            break;
+            ipdStart = ESP8266_strstr( "+IPD," );
         }
     }
 

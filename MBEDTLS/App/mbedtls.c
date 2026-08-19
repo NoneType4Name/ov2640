@@ -46,6 +46,7 @@ void MX_MBEDTLS_Init( void )
 {
     /**
      */
+    mbedtls_ssl_init( &ssl );
     mbedtls_ssl_config_init( &conf );
     mbedtls_x509_crt_init( &cert );
     mbedtls_ctr_drbg_init( &ctr_drbg );

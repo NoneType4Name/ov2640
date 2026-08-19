@@ -20,7 +20,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
-#include "usbd_def.h"
 
 /* USER CODE BEGIN INCLUDE */
 

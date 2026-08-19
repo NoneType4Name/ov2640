@@ -9,7 +9,7 @@
 
 #define ESP_DEBUG
 
-void ESP8266_ClearRecvBuff();
+// void ESP8266_ClearRecvBuff();
 
 bool ESP8266_Send( const char *command );
 bool ESP8266_Recv( const char *correctAnswer );
@@ -19,7 +19,7 @@ char *ESP8266_GetAcceessPoints();
 
 bool ESP8266_Restart();
 
-void ESP8266_SetConfig( UART_HandleTypeDef *huart, GPIO_TypeDef *pinPort, uint32_t pinNum );
+void ESP8266_SetConfig( UART_HandleTypeDef *huart, DMA_HandleTypeDef *hdma, GPIO_TypeDef *pinPort, uint32_t pinNum );
 
 void ESP8266_ON();
 void ESP8266_OFF();
@@ -39,8 +39,8 @@ bool ESP8266_AT_CIPSTART( const char *type, const char *ip, uint16_t port );
 bool ESP8266_AT_CIPSEND( int requestLength );
 bool ESP8266_AT_SendData( const char *request );
 
-void ESP8266_StartPollingReceive( void );
-void ESP8266_StopPollingReceive( void );
+// void ESP8266_StartPollingReceive( void );
+// void ESP8266_StopPollingReceive( void );
 uint32_t ESP8266_GetPollingBytesAvailable( void );
 uint32_t ESP8266_CopyPollingData( uint8_t *dst, uint32_t maxLen );
 

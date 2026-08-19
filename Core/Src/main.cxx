@@ -20,7 +20,6 @@
 #include "main.h"
 #include "fatfs.h"
 #include "mbedtls.h"
-#include "stm32h7xx_hal_pcd.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -1211,7 +1210,7 @@ void updateLastTelemetryInfo()
                 {
                     ESP8266_Send( "+++" );
                     HAL_Delay( 1000 );
-                } while ( !( ESP8266_Send( "AT+CIPCLOSE\r\n" ) && ESP8266_Recv( "OK" ) ) );
+                } while ( !( ESP8266_Send( "AT+CIPCLOSE\r\n" ) && ESP8266_Recv( "OK" ) ) || ( ESP8266_Send( "AT\r\n" ) && ESP8266_Recv( "OK" ) ) );
             }
             mbedtls_ssl_free( &ssl );
             ESP8266_Send( "AT+CIPMODE=0\r\n" ) && ESP8266_Recv( "OK" );
@@ -1383,7 +1382,7 @@ int main( void )
     mbedtls_ssl_conf_authmode( &conf, MBEDTLS_SSL_VERIFY_NONE );
     mbedtls_ssl_conf_rng( &conf, mbedtls_ctr_drbg_random, &ctr_drbg );
     // init ESP
-    ESP8266_SetConfig( &huart3, ESP_PW_GPIO_Port, ESP_PW_Pin );
+    ESP8266_SetConfig( &huart3, &hdma_usart3_rx, ESP_PW_GPIO_Port, ESP_PW_Pin );
     ESP8266_ON();
     ESP8266_EnableEcho();
     ESP8266_Send( "AT+CWMODE=1\r\n" );
