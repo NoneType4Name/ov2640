@@ -49,7 +49,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     # Add user sources here
-    ${PROJECT_SOURCE_DIR}/Core/Src/ESP8266.c
+    ${PROJECT_SOURCE_DIR}/Core/Src/ESP8266.cxx
     ${PROJECT_SOURCE_DIR}/Core/Src/ov2640_interface.c
     ${PROJECT_SOURCE_DIR}/Core/Src/ov2640_basic.c
     ${PROJECT_SOURCE_DIR}/Core/Src/driver_ov2640.c

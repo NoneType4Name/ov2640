@@ -12,7 +12,7 @@
 // void ESP8266_ClearRecvBuff();
 
 bool ESP8266_Send( const char *command );
-bool ESP8266_Recv( const char *correctAnswer );
+bool ESP8266_Recv( const char *correctAnswer, bool saveAnsv = 0, uint32_t timeout = 10000 );
 size_t ESP8266_RecvCount( uint8_t *dst, uint32_t count );
 
 char *ESP8266_GetAcceessPoints();
@@ -20,6 +20,8 @@ char *ESP8266_GetAcceessPoints();
 bool ESP8266_Restart();
 
 void ESP8266_SetConfig( UART_HandleTypeDef *huart, DMA_HandleTypeDef *hdma, GPIO_TypeDef *pinPort, uint32_t pinNum );
+char *ESP8266_strstr( const char *needle );
+void ESP8266_lineRegion( uint16_t offsetFromTail, uint16_t count, char *dest );
 
 void ESP8266_ON();
 void ESP8266_OFF();
@@ -41,9 +43,9 @@ bool ESP8266_AT_SendData( const char *request );
 
 // void ESP8266_StartPollingReceive( void );
 // void ESP8266_StopPollingReceive( void );
-uint32_t ESP8266_GetPollingBytesAvailable( void );
-uint32_t ESP8266_CopyPollingData( uint8_t *dst, uint32_t maxLen );
+// uint32_t ESP8266_GetPollingBytesAvailable( void );
+// uint32_t ESP8266_CopyPollingData( uint8_t *dst, uint32_t maxLen );
 
-char *ESP8266_GetResponse( uint32_t timeout );
+// char *ESP8266_GetResponse( uint32_t timeout );
 
 #endif /* ESP8266_H_ */

@@ -43,11 +43,11 @@
 #include <sys/time.h>
 #include <time.h>
 #include <vector>
+#include "ESP8266.hxx"
 
 // #include "TestImage.h"
 extern "C"
 {
-#include "ESP8266.h"
 #include "espConfig.h"
 }
 
@@ -210,6 +210,9 @@ typedef struct
 FIL FatFsFile;
 extern char ESP_RX_buff[ ESP_RX_buff_size ];
 extern char ESP_TX_buff[ ESP_TX_buff_size ];
+extern uint16_t ESP8266_rxHead;
+extern uint16_t ESP8266_rxTail;
+extern uint16_t ESP8266_rxCount;
 std::bitset<WIDTH * HEIGHT> pixelVisited { 0 };
 extern mbedtls_ssl_context ssl;
 extern mbedtls_ssl_config conf;
@@ -1068,16 +1071,23 @@ void updateTime()
 {
     while ( 1 )
     {
-        if ( ESP8266_Send( "AT+CIPSNTPTIME?\r\n" ) && ESP8266_Recv( "OK" ) )
+        if ( ESP8266_Send( "AT+CIPSNTPTIME?\r\n" ) && ESP8266_Recv( "CIPSNTPTIME:" ) )
         {
             uint8_t day, month, hour, minute, second, dayOfWeek;
             uint16_t year;
             char monthStr[ 4 ];
             char dayOfWeekStr[ 4 ];
-
+            char buffer[ 30 ];
+            ESP8266_Recv( "OK", 1 );
+            auto d     = ESP8266_strstr( "\r\nOK" );
+            auto ind   = ( d - ESP_RX_buff );
+            auto count = ind > ESP8266_rxTail ? ind - ESP8266_rxTail : ( ESP_RX_buff_size - ESP8266_rxTail ) + ind;
+            ESP8266_lineRegion( 0, count, buffer );
+            ESP8266_Recv( "OK" );
+            buffer[ count ] = 0;
             int temp_day, temp_hour, temp_minute, temp_second, temp_year;
-            auto s = sscanf( strstr( ESP_RX_buff, "+CIPSNTPTIME:" ),
-                             "+CIPSNTPTIME:%3s %3s %d %d:%d:%d %d",
+            auto s = sscanf( buffer,
+                             "%3s %3s %d %d:%d:%d %d",
                              dayOfWeekStr, monthStr, &temp_day, &temp_hour, &temp_minute, &temp_second, &temp_year );
             if ( s == 7 )
             {
@@ -1148,7 +1158,6 @@ void updateLastTelemetryInfo()
                     return ESP8266_RecvCount( data, len );
                 },
                 NULL );
-
             if ( ( ESP8266_Send( "AT+CIPMODE=1\r\n" ) && ESP8266_Recv( "OK" ) ) &&
                  ( ESP8266_Send(
                        "AT+CIPSTART=\"TCP\",\"moscowtransport.app\",443\r\n" ) &&
@@ -1156,11 +1165,10 @@ void updateLastTelemetryInfo()
             {
                 if ( ( ESP8266_Send( "AT+CIPSEND\r\n" ) && ESP8266_Recv( ">" ) ) )
                 {
-                    ESP8266_ClearRecvBuff();
-                    ESP8266_StartPollingReceive();
                     mbedtls_ssl_set_hostname( &ssl, "moscowtransport.app" );
                     if ( ( mbedtls_ssl_handshake( &ssl ) ) == 0 )
                     {
+                        char rxData[ 2000 ];
                         sprintf( ESP_TX_buff,
                                  "GET /api/stop_v2/cfa44aab-9de8-498d-85f6-e3e36ad3be80 "
                                  "HTTP/1.1\r\n"
@@ -1170,13 +1178,10 @@ void updateLastTelemetryInfo()
                                  "Connection: close\r\n"
                                  "\r\n" );
 
-                        ESP8266_StopPollingReceive();
-                        ESP8266_ClearRecvBuff();
                         mbedtls_ssl_write( &ssl, ( uint8_t * ) ESP_TX_buff, strlen( ESP_TX_buff ) );
-                        ESP8266_StartPollingReceive();
-                        if ( mbedtls_ssl_read( &ssl, ( uint8_t * ) ESP_RX_buff, sizeof( ESP_RX_buff ) - 1 ) )
+                        if ( mbedtls_ssl_read( &ssl, ( uint8_t * ) rxData, sizeof( rxData ) - 1 ) )
                         {
-                            auto d = strstr( strstr( ESP_RX_buff, "externalForecast" ), "\"time" );
+                            auto d = strstr( strstr( rxData, "externalForecast" ), "\"time" );
                             if ( d )
                             {
                                 uint32_t remainedTime;
@@ -1204,13 +1209,12 @@ void updateLastTelemetryInfo()
                             }
                         }
                     }
-                    ESP8266_StopPollingReceive();
                 }
                 do
                 {
                     ESP8266_Send( "+++" );
                     HAL_Delay( 1000 );
-                } while ( !( ESP8266_Send( "AT+CIPCLOSE\r\n" ) && ESP8266_Recv( "OK" ) ) || ( ESP8266_Send( "AT\r\n" ) && ESP8266_Recv( "OK" ) ) );
+                } while ( !( ESP8266_Recv( "CLOSED\r\n", 0, 100 ) || ( ESP8266_Send( "AT+CIPCLOSE\r\n" ) && ESP8266_Recv( "OK" ) ) ) );
             }
             mbedtls_ssl_free( &ssl );
             ESP8266_Send( "AT+CIPMODE=0\r\n" ) && ESP8266_Recv( "OK" );
