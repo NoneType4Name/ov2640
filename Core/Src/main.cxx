@@ -1029,9 +1029,9 @@ bool addNewRecord( uint32_t writeNum, bool isOccured )
         return 0;
     if ( !f_tell( &FatFsFile ) )
     {
-        char c[] { "id,shedule,real,telemetry,night,occured\n" };
-        f_write( &FatFsFile, c, sizeof( c ), &bytes_read );
-        if ( result != FR_OK || bytes_read != sizeof( c ) )
+        char c[] { "id,shedule,real,telemetry,night,tmID,occured\n" };
+        f_write( &FatFsFile, c, strlen( c ), &bytes_read );
+        if ( result != FR_OK || bytes_read != strlen( c ) )
         {
             return 0;
         }
@@ -1042,8 +1042,8 @@ bool addNewRecord( uint32_t writeNum, bool isOccured )
     ulltoa( lastTelemetry.timeByShedule, unixShedule, 10 );
     char unixTimestamp[ 21 ];
     ulltoa( RTC_Unix_Timestamp(), unixTimestamp, 10 );
-    sprintf( record, "%d,%s,%s,%i,%i,%i\n", writeNum, unixShedule,
-             unixTimestamp, lastTelemetry.byTelemetry, states.nightMode, isOccured );
+    sprintf( record, "%i,%s,%s,%i,%i,%i,%i\n", writeNum, unixShedule,
+             unixTimestamp, lastTelemetry.byTelemetry, states.nightMode, lastTelemetry.tmId, isOccured );
     f_write( &FatFsFile, record, strlen( record ), &bytes_read );
     f_sync( &FatFsFile );
     f_close( &FatFsFile );
@@ -1195,10 +1195,12 @@ void updateLastTelemetryInfo()
                                     if ( remainedTime > 5 * 60 )
                                     {
                                         lastTelemetry.ticksToOutdate = 1 * 60 / 2;
+                                        states.busIsNearby           = 0;
                                     }
                                     else
                                     {
                                         lastTelemetry.ticksToOutdate = remainedTime / 2 + 3 * 60 / 2;
+                                        states.busIsNearby           = 1;
                                     }
                                     HAL_TIM_Base_Start_IT( &htim6 ); // tick = 2 sec
                                     lastTelemetry.timeByShedule = RTC_Unix_Timestamp() + remainedTime;
