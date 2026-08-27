@@ -1461,6 +1461,8 @@ int main( void )
             }
             getAverageLuminance();
             aecAutoControl();
+            states.newFrame = false;
+            DCMI->CR |= DCMI_CR_CAPTURE;
         }
         if ( states.sdCardPresented && !states.sdCardMounted )
         {
@@ -1519,8 +1521,6 @@ int main( void )
             CDC_TX_FRAME();
             states.newDataRx = 0;
         }
-        states.newFrame = false;
-        DCMI->CR |= DCMI_CR_CAPTURE;
         if ( states.needCalibrateRTC )
         {
             updateTime();
