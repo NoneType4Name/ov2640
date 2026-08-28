@@ -24,7 +24,7 @@ FATFS SDFatFS;    /* File system object for SD logical drive */
 FIL SDFile;       /* File object for SD */
 
 /* USER CODE BEGIN Variables */
-
+extern RTC_HandleTypeDef hrtc;
 /* USER CODE END Variables */
 
 void MX_FATFS_Init( void )
@@ -45,6 +45,18 @@ void MX_FATFS_Init( void )
 DWORD get_fattime( void )
 {
     /* USER CODE BEGIN get_fattime */
+    RTC_TimeTypeDef sTime = { 0 };
+    RTC_DateTypeDef sDate = { 0 };
+
+    HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN );
+    HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN );
+
+    return ( ( DWORD ) ( sDate.Year + 20 - 1980 ) << 25 ) |
+           ( ( DWORD ) sDate.Month << 21 ) |
+           ( ( DWORD ) sDate.Date << 16 ) |
+           ( ( DWORD ) sTime.Hours << 11 ) |
+           ( ( DWORD ) sTime.Minutes << 5 ) |
+           ( ( DWORD ) ( sTime.Seconds / 2 ) );
     return 0;
     /* USER CODE END get_fattime */
 }
