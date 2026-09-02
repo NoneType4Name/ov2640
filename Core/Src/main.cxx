@@ -1024,19 +1024,19 @@ uint32_t IncrementLastPhotoNumber()
     return 0;
 }
 
-bool addNewRecord( uint32_t writeNum, bool isOccured )
+bool addNewRecordedBus( uint32_t writeNum )
 {
     if ( !states.sdCardMounted )
         return 0;
     FRESULT result;
     UINT bytes_read;
 
-    result = f_open( &FatFsFile, "db.csv", FA_WRITE | FA_OPEN_APPEND );
+    result = f_open( &FatFsFile, "bus.csv", FA_WRITE | FA_OPEN_APPEND );
     if ( result != FR_OK )
         return 0;
     if ( !f_tell( &FatFsFile ) )
     {
-        char c[] { "id,shedule,real,telemetry,night,tmID,occured\n" };
+        char c[] { "photoNum,timeUNIX,year,month,date,dayOfWeek,nightMode\n" };
         f_write( &FatFsFile, c, strlen( c ), &bytes_read );
         if ( result != FR_OK || bytes_read != strlen( c ) )
         {
@@ -1049,8 +1049,51 @@ bool addNewRecord( uint32_t writeNum, bool isOccured )
     ulltoa( lastTelemetry.timeByShedule, unixShedule, 10 );
     char unixTimestamp[ 21 ];
     ulltoa( RTC_Unix_Timestamp(), unixTimestamp, 10 );
-    sprintf( record, "%i,%s,%s,%i,%i,%i,%i\n", writeNum, unixShedule,
-             unixTimestamp, lastTelemetry.byTelemetry, states.nightMode, lastTelemetry.tmId, isOccured );
+    RTC_TimeTypeDef sTime {};
+    RTC_DateTypeDef sDate {};
+    HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN );
+    HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN );
+    sprintf( record, "%i,%s,%i,%i,%i,%i,%i\n", writeNum, unixTimestamp, sDate.Year, sDate.Month, sDate.Date, sDate.WeekDay, states.nightMode );
+    f_write( &FatFsFile, record, strlen( record ), &bytes_read );
+    f_sync( &FatFsFile );
+    f_close( &FatFsFile );
+
+    if ( result != FR_OK || bytes_read != sizeof( record ) )
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+bool addNewRecordedShedule()
+{
+    if ( !states.sdCardMounted )
+        return 0;
+    FRESULT result;
+    UINT bytes_read;
+
+    result = f_open( &FatFsFile, "sh.csv", FA_WRITE | FA_OPEN_APPEND );
+    if ( result != FR_OK )
+        return 0;
+    if ( !f_tell( &FatFsFile ) )
+    {
+        char c[] { "unixTime,tmID,byTelemetry,year,month,date,dayOfWeek\n" };
+        f_write( &FatFsFile, c, strlen( c ), &bytes_read );
+        if ( result != FR_OK || bytes_read != strlen( c ) )
+        {
+            return 0;
+        }
+    }
+
+    char record[ 90 ];
+    char unixShedule[ 21 ];
+    ulltoa( lastTelemetry.timeByShedule, unixShedule, 10 );
+    RTC_TimeTypeDef sTime {};
+    RTC_DateTypeDef sDate {};
+    HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN );
+    HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN );
+    sprintf( record, "%s,%i,%i,%i,%i,%i,%i\n", unixShedule, lastTelemetry.tmId, lastTelemetry.byTelemetry, sDate.Year, sDate.Month, sDate.Date, sDate.WeekDay );
     f_write( &FatFsFile, record, strlen( record ), &bytes_read );
     f_sync( &FatFsFile );
     f_close( &FatFsFile );
@@ -1199,14 +1242,14 @@ void updateLastTelemetryInfo()
                                             &remainedTime, &telemetry, &tmId );
                                 if ( s == 3 )
                                 {
-                                    if ( remainedTime > 5 * 60 )
+                                    if ( remainedTime > 2 * 60 )
                                     {
                                         lastTelemetry.ticksToOutdate = 1 * 60 / 2;
                                         states.busIsNearby           = 0;
                                     }
                                     else
                                     {
-                                        lastTelemetry.ticksToOutdate = remainedTime / 2 + 3 * 60 / 2;
+                                        lastTelemetry.ticksToOutdate = remainedTime / 2 + 1 * 60 / 2;
                                         states.busIsNearby           = 1;
                                     }
                                     HAL_TIM_Base_Start_IT( &htim6 ); // tick = 2 sec
@@ -1441,8 +1484,7 @@ int main( void )
                             sprintf( name, "0:/data/img%d-%c-%d.bmp", photoNum,
                                      states.nightMode ? 'n' : 'd', TxData.avgLuminance );
                             SaveImageBMP( name, reinterpret_cast<uint8_t *>( &TxData.frame ), sizeof( TxData.frame ) );
-                            addNewRecord( photoNum, 1 );
-                            updateLastTelemetryInfo();
+                            addNewRecordedBus( photoNum );
                             enableLed500ms();
                         }
                         states.cameraCountdown = true;
@@ -1536,7 +1578,7 @@ int main( void )
         {
             if ( states.busIsNearby )
             {
-                addNewRecord( IncrementLastPhotoNumber(), 0 );
+                addNewRecordedShedule();
             }
             updateLastTelemetryInfo();
         }
